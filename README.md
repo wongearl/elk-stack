@@ -34,4 +34,17 @@ kubectl -n elkstuck create secret generic elastic-certificate-pem --from-file=./
 ```shell
 kubectl -n elkstuck create secret generic elastic-credentials --from-literal=username=elastic --from-literal=password=elastic
 ```
+## 2. 部署
+### 2.1 部署elastic-search
+chart包中的value.yaml
+1. 部署ES
+```shell
+helm -n elkstuck install elastic-search ./elasticsearch
+```
 
+### 2.2 部署kibana
+chart包中的value.yaml
+1. 部署kibana
+```shell
+helm -n elkstuck install kibana ./kibana
+```
