@@ -4,7 +4,7 @@
 1. 运行容器生成证书
 ```shell
 docker run --name elastic-charts-certs -i -w /app elasticsearch:7.13.1 /bin/sh -c \
-"elasticsearch-certutil ca --days 3650 --out /app/elastic-stack-ca.p12 --pass '' && \
+"elasticsearch-certutil ca --days 36500 --out /app/elastic-stack-ca.p12 --pass '' && \
 elasticsearch-certutil cert --name security-master --dns \
 security-master --ca /app/elastic-stack-ca.p12 --pass '' --ca-pass '' --out /app/elastic-certificates.p12"
 ```
