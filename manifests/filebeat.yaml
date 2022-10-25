@@ -1,0 +1,249 @@
+# Source: filebeat/templates/serviceaccount.yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: release-name-filebeat
+  labels:
+    app: "release-name-filebeat"
+    chart: "filebeat-7.13.1"
+    heritage: "Helm"
+    release: "release-name"
+---
+# Source: filebeat/templates/configmap.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: release-name-filebeat-daemonset-config
+  labels:
+    app: "release-name-filebeat"
+    chart: "filebeat-7.13.1"
+    heritage: "Helm"
+    release: "release-name"
+data:
+  filebeat.yml: |
+    # 数据输入，读取日志的位置，这里是直接读取宿主机的相应目录，
+    # 运行环境中的Docker中业务日志，如果需要使用 ELK 查看需要挂载到宿主机的相关目录下。
+    filebeat.inputs:
+      # 读取类型
+      - type: log
+        # 开关
+        enabled: true
+        # 日志路径，宿主机上的文件路径
+        paths:
+          - /var/log/containers/*.log
+        # 区分业务日志，添加的 tag, 在 logstash 处理时会根据这个来进行解析并分发到 ES 存储。
+        tags: ['spider_info']
+        # 多行日志的换行规则（开头到结尾的位置定位）
+        multiline.pattern: '^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}:\d{3}'
+        multiline.negate: true
+        multiline.match: after
+    # 输出到 elasticsearch
+    output.logstash:
+      # logstash 的 Service 服务和端口
+      hosts: '${ELASTICSEARCH_HOSTS:logstash-logstash:5044}'
+      # 启用 Logstash 负载均衡
+      loadbalance: true
+      index: filebeat
+    # Filebeat 自身日志配置
+    logging:
+      level: info
+      to_files: true
+      files:
+        path: /var/log/filebeat
+        name: filebeat.log
+        keepfiles: 7
+        permissions: 0644
+    # Filebeat 监控配置（数据传输到 ES）
+    monitoring:
+      enabled: true
+      #cluster_uuid: gPgughR6T3eYHfmoiG9n_g
+      elasticsearch:
+        hosts: ['${ELASTICSEARCH_HOSTS:elasticsearch-master:9200}']
+        username: '${ELASTIC_USERNAME}'
+        password: '${ELASTIC_PASSWORD}'
+---
+# Source: filebeat/templates/clusterrole.yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: release-name-filebeat-cluster-role
+  labels:
+    app: "release-name-filebeat"
+    chart: "filebeat-7.13.1"
+    heritage: "Helm"
+    release: "release-name"
+rules:
+  - apiGroups:
+      - ""
+    resources:
+      - namespaces
+      - nodes
+      - pods
+    verbs:
+      - get
+      - list
+      - watch
+---
+# Source: filebeat/templates/clusterrolebinding.yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: release-name-filebeat-cluster-role-binding
+  labels:
+    app: "release-name-filebeat"
+    chart: "filebeat-7.13.1"
+    heritage: "Helm"
+    release: "release-name"
+roleRef:
+  kind: ClusterRole
+  name: release-name-filebeat-cluster-role
+  apiGroup: rbac.authorization.k8s.io
+subjects:
+  - kind: ServiceAccount
+    name: release-name-filebeat
+    namespace: default
+---
+# Source: filebeat/templates/daemonset.yaml
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: release-name-filebeat
+  labels:
+    app: "release-name-filebeat"
+    chart: "filebeat-7.13.1"
+    heritage: "Helm"
+    release: "release-name"
+spec:
+  selector:
+    matchLabels:
+      app: "release-name-filebeat"
+      release: "release-name"
+  updateStrategy:
+    rollingUpdate:
+      maxUnavailable: 1
+    type: RollingUpdate
+  template:
+    metadata:
+      annotations:
+
+        configChecksum: c73dd817a27922f141e8cd0f114fa500e51a13f41bf7a886c1c356c45c01f69
+      name: "release-name-filebeat"
+      labels:
+        app: "release-name-filebeat"
+        chart: "filebeat-7.13.1"
+        heritage: "Helm"
+        release: "release-name"
+    spec:
+      tolerations:
+        []
+      nodeSelector:
+        {}
+      affinity:
+        {}
+      serviceAccountName: release-name-filebeat
+      terminationGracePeriodSeconds: 30
+      volumes:
+        - name: elastic-certificates
+          secret:
+            secretName: elastic-certificates
+        - name: filebeat-config
+          configMap:
+            defaultMode: 0600
+            name: release-name-filebeat-daemonset-config
+        - name: data
+          hostPath:
+            path: /var/lib/release-name-filebeat-default-data
+            type: DirectoryOrCreate
+        - name: varlibdockercontainers
+          hostPath:
+            path: /var/lib/docker/containers
+        - name: varlog
+          hostPath:
+            path: /var/log
+        - name: varrundockersock
+          hostPath:
+            path: /var/run/docker.sock
+      containers:
+        - name: "filebeat"
+          image: "docker.elastic.co/beats/filebeat:7.13.1"
+          imagePullPolicy: "IfNotPresent"
+          args:
+            - "-e"
+            - "-E"
+            - "http.enabled=true"
+          livenessProbe:
+            exec:
+              command:
+                - sh
+                - -c
+                - |
+                  #!/usr/bin/env bash -e
+                  curl --fail 127.0.0.1:5066
+            failureThreshold: 3
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+          readinessProbe:
+            exec:
+              command:
+                - sh
+                - -c
+                - |
+                  #!/usr/bin/env bash -e
+                  filebeat test output
+            failureThreshold: 3
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+          resources:
+            limits:
+              cpu: 1000m
+              memory: 200Mi
+            requests:
+              cpu: 100m
+              memory: 100Mi
+          env:
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+            - name: ELASTIC_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  key: username
+                  name: elastic-credentials
+            - name: ELASTIC_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  key: password
+                  name: elastic-credentials
+          envFrom:
+            []
+          securityContext:
+            privileged: false
+            runAsUser: 0
+          volumeMounts:
+            - name: elastic-certificates
+              mountPath: /usr/share/filebeat/certs
+            - name: filebeat-config
+              mountPath: /usr/share/filebeat/filebeat.yml
+              readOnly: true
+              subPath: filebeat.yml
+            - name: data
+              mountPath: /usr/share/filebeat/data
+            - name: varlibdockercontainers
+              mountPath: /var/lib/docker/containers
+              readOnly: true
+            - name: varlog
+              mountPath: /var/log
+              readOnly: true
+            # Necessary when using autodiscovery; avoid mounting it otherwise
+            # See: https://www.elastic.co/guide/en/beats/filebeat/7.13/configuration-autodiscover.html
+            - name: varrundockersock
+              mountPath: /var/run/docker.sock
+              readOnly: true
+
