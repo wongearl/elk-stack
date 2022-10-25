@@ -36,15 +36,29 @@ kubectl -n elkstuck create secret generic elastic-credentials --from-literal=use
 ```
 ## 2. 部署
 ### 2.1 部署elastic-search
-chart包中的value.yaml
+修改chart包中的value.yaml
 1. 部署ES
 ```shell
 helm -n elkstuck install elastic-search ./elasticsearch
 ```
 
 ### 2.2 部署kibana
-chart包中的value.yaml
+修改chart包中的value.yaml
 1. 部署kibana
 ```shell
 helm -n elkstuck install kibana ./kibana
+```
+
+### 2.3 部署logstash
+修改chart包中的value.yaml
+1. 部署logstash
+```shell
+helm -n elkstuck install logstash ./logstash
+```
+
+### 2.4 部署filebeat
+修改chart包中的value.yaml
+1. 部署filebeat
+```shell
+helm -n elkstuck install filebeat ./filebeat
 ```
